@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Created 6/22/16, updated 6/16/2017
+# Adapted by Eric G Kariuki (Sep 2021) from SAMSA (Westreich,2016)
 # Run with --help flag for help.
 
 suppressPackageStartupMessages({

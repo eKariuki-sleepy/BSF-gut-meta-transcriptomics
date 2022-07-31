@@ -1,4 +1,4 @@
-# Created 6/22/16, updated 6/16/2017
+# Adapted by Eric Kariuki, Created-6/16/2017 by Sam Westreich
 # Run with --help flag for help.
 
 suppressPackageStartupMessages({
