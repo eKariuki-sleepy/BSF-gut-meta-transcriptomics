@@ -1,6 +1,6 @@
 # diversity_stats.R
-# Created 8/11/16
-# Last updated 6/16/2017
+# Created by Sam Westreich - 6/16/2017
+# Last updated by Eric G Kariuki Oct'21
 # Run with --help flag for help.
 
 suppressPackageStartupMessages({
