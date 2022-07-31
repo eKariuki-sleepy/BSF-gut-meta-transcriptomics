@@ -1,4 +1,5 @@
-# Created 6/22/16, updated 6/16/2017 by Westreich, 2016
+# make_DESeq_PCA.R
+# Adapted from SAMSA (Westreich, 2016) by Eric G Kariuki, & Eric Njiraini (Oct 2021)
 # Run with --help flag for help.
 
 suppressPackageStartupMessages({
@@ -6,41 +7,38 @@ suppressPackageStartupMessages({
 })
 
 option_list = list(
-  make_option(c("-I", "--input"), type="character", default="./",
+  make_option(c("-I", "--input"), type="character", default="A:/Analy2is/R_analysis/counts/Organism",
               help="Input directory", metavar="character"),
-  make_option(c("-O", "--out"), type="character", default="A:/Analy2is/R_analysis/counts/normalized_counts_table.tab", 
-              help="output file name [default= %default]", metavar="character"),
-  make_option(c("-R", "--raw_counts"), type="character", default="A:/Analy2is/R_analysis/counts/rawcounts.txt",
-              help="raw (total) read counts for this starting file", metavar="character")
+  make_option(c("-O", "--out"), type="character", default="PCA_plot.tab",
+              help="output file name [default= %default]", metavar="character")
 )
 
 opt_parser = OptionParser(option_list=option_list);
 opt = parse_args(opt_parser);
 
-print("USAGE: $ get_normalized_counts_table.R -I working_directory/ -O save.filename")
-setwd("A:/Analy2is/R_analysis/counts/Organism")
+print("USAGE: $ run_DESeq_stats.R -I working_directory/ -O save.filename -L level (1,2,3,4)")
+
 # check for necessary specs
 if (is.null(opt$input)) {
   print ("WARNING: No working input directory specified with '-I' flag.")
   stop()
 } else {  cat ("Working directory is ", opt$input, "\n")
-  wd_location <- opt$input  
+  wd_location <- opt$input
   setwd(wd_location)  }
 
-if (is.null(opt$out)) {
-  print ("WARNING: No save name for DESeq results specified; defaulting to 'normalized_counts_table.tab'.") 
-  save_filename <- opt$out
-} else { save_filename <- opt$out }
+cat ("Saving results as ", opt$out, "\n")
+save_filename <- opt$out
 
-if (is.null(opt$raw_counts)) {
-  print ("WARNING: no raw counts file specified, skipping this info for DESeq analysis.")
-} else {
-  counts_file <- opt$raw_counts
-}
+cat ("Calculating DESeq results for hierarchy level ", opt$level, "\n")
 
 # import other necessary packages
 suppressPackageStartupMessages({
   library(DESeq2)
+  library("pheatmap")
+  library(ggplot2)
+  library(factoextra)
+  library(ggforce)
+  library(ggrepel)
 })
 
 # GET FILE NAMES
@@ -106,59 +104,57 @@ exp_table_trimmed <- exp_table[,-1]
 colnames(control_table_trimmed) = control_names_trimmed
 colnames(exp_table_trimmed) = exp_names_trimmed
 
-# merging the two tables
 complete_table <- merge(control_table_trimmed, exp_table_trimmed, by=0, all = TRUE)
-complete_table[is.na(complete_table)] <- 0
+complete_table[is.na(complete_table)] <- 1
 rownames(complete_table) <- complete_table$Row.names
-complete_table <- complete_table[!(complete_table$Row.names == ""), ]
-# reducing stuff down to avoid duplicates
-######################
-#Added DT fix_EK
-library(data.table)
-setDT(complete_table)
-complet <- names(complete_table)
-complete_table[, c(complet) := lapply(.SD, sum), by=complete_table$Row.names ]
-######################
-# removing extra Row.names column
 complete_table <- complete_table[,-1]
-
-# OPTIONAL: importing the raw counts
-if (is.null(opt$raw_counts) == FALSE) {
-  raw_counts_table <- read.table(counts_file, header=FALSE, sep = "\t", quote = "")
-  raw_counts_table <- data.frame(raw_counts_table, 
-        do.call(rbind, strsplit(as.character(raw_counts_table$V1),'_')))
-  raw_counts_table$X2 <- as.numeric(as.character(raw_counts_table$X2))
-  raw_counts_table <- t(raw_counts_table[,c("X2", "V2")])
-  row.names(raw_counts_table) <- c("SAMPLE","RAW TOTAL")
-  colnames(raw_counts_table) <- raw_counts_table[1,]
-  raw_counts_table <- as.data.frame(raw_counts_table)
-  raw_counts_table <- raw_counts_table[-1,]
-  
-  # Need to subtract off the total number of annotations
-  raw_counts_table["ANNOTATION COUNT",] <- colSums(complete_table)
-  raw_counts_table["OTHER",] <- raw_counts_table[1,] - raw_counts_table[2,]
-
-  complete_table <- rbind(complete_table, raw_counts_table["OTHER",], use.names=FALSE)
-}
-
-# DESeq statistical calculations
 completeCondition <- data.frame(condition=factor(c(
-  rep(paste("control", 1:length(control_files), sep=".")), 
+  rep(paste("control", 1:length(control_files), sep=".")),
   rep(paste("experimental", 1:length(exp_files), sep=".")))))
 completeCondition1 <- t(completeCondition)
 colnames(complete_table) <- completeCondition1
 completeCondition2 <- data.frame(condition=factor(c(
-  rep("control", length(control_files)), 
+  rep("control", length(control_files)),
   rep("experimental", length(exp_files)))))
 
-dds <- DESeqDataSetFromMatrix(complete_table, completeCondition2, ~condition)
+#Add an extra field for SampleID_ EK
+
+completeCondition2 = data.frame(row.names = c("CF1","CF3","CF4","BSG1","BSG2","BSG3", "CM1", "CM2", "CM3","FM1","FM2","FM3","WH1","WH2","WH3"),completeCondition2)
+###convert rowname to column
+completeCondition2 <- tibble::rownames_to_column(completeCondition2, "samples")
+### Add new column with condition names
+completeCondition2$conditions <- c("CF","CF","CF","BSG","BSG","BSG","CM","CM","CM","FM","FM","FM","WH","WH","WH")
+dds <- DESeqDataSetFromMatrix(complete_table, completeCondition2, ~conditions)
+
 dds <- DESeq(dds)
+transformed_data <- rlog(dds, blind=FALSE)
 
-# getting normalized counts
-dds <- estimateSizeFactors(dds)
-normalized_counts_table = counts(dds, normalized = TRUE)
+# making the PCA plot
 
-# saving and finishing up
-cat ("\nSuccess!\nSaving normalized counts table as ", save_filename, "\n")
-write.table(normalized_counts_table, file = save_filename, append = FALSE, quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
+# calculate euclidean distances from the variance-stabilized data
+dists <- dist(t(assay(transformed_data)))
+PCAplot <- plotPCA(transformed_data, intgroup = "conditions", returnData = TRUE)
+percentVar <- round(100 * attr(PCAplot, "percentVar"))
 
+
+pcplot <- ggplot(PCAplot, aes(PC1, PC2, color=conditions)) +
+    geom_point(size=2.5) + ##### Adding ellipses using ggforce ######
+    ggforce::geom_mark_ellipse(aes(fill = conditions,
+                               color = conditions)) +
+    theme(legend.position = 'bottom') +
+    geom_label_repel(aes(label=completeCondition2$samples), fill = "white", size=2.8, 
+                     max.overlaps = Inf, fontface = 'bold') +
+#    geom_text(aes(label=name), hjust=1, vjust=-1) +
+    ggtitle("PCA Plot of control vs. experimental organism data") +
+    theme(legend.position = "bottom") + xlim(-12,5)+ ylim(-7.5,6) +
+    xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+    ylab(paste0("PC2: ",percentVar[2],"% variance"))
+  
+ # coord_equal()
+  
+pcplot
+
+###saving and finishing up####
+cat ("Saving PCA plot as ", save_filename, " now.\n")
+pdf(file = paste(save_filename,".pdf",sep = ""), width=10, height=7)
+dev.off()

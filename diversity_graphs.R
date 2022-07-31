@@ -1,6 +1,5 @@
 # diversity_graphs.R
-# Created 8/11/16
-# Last updated 6/16/2017
+# Adapted from SAMSA (Westreich, 2016) by Eric G Kariuki (Oct 2021)
 # Run with --help flag for help.
 
 suppressPackageStartupMessages({
