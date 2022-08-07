@@ -1,0 +1,25 @@
+
+
+**id90 > 50k reads.
+#This script takes in our fastq files and sorts the rRNA based on ribosomal subunits.
+
+mkdir bac-16S
+mkdir aligned
+
+#The loop generates mapped rRNA reads ,unmapped rRNA reads with respect to each sample and a log file.
+#Removes the kvdb file to allows next run.(sortmerna guidlines)
+
+for file in ./*.fq;
+do
+
+        name=$(basename ${file} .fq)
+       # echo $name
+        sortmerna --ref ../sortmerna/sortmerna_db/rRNA_databases/silva-bac-16s-database-id85.fasta   --reads $file \
+        --aligned ./aligned/bac-16S-85-mapped$name  --other ./bac-16S-85-umapped$name \
+        --fastx ./bac-16S-85-unmapped$name  --threads 9
+             rm -rfv /home/oscarmwaura/sortmerna/run/kvdb
+             mv ./aligned/bac-16S* bac-16S
+
+done
+```
+
