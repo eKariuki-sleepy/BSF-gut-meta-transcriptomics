@@ -1,6 +1,7 @@
 ---
-title: "BSF Microbiome"
+title: "16S rRNA analysis - BSF Gut Microbiome"
 author: "Nehemiah Ongeso"
+co-authors: "Eric Kariuki, Oscar Mwaura, John Njogu"
 date: "2023-03-29"
 output: html_document
 ---
