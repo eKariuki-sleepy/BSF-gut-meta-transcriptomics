@@ -1,0 +1,872 @@
+---
+title: "BSF Microbiome"
+author: "Nehemiah Ongeso"
+date: "2023-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Load Packages
+suppressPackageStartupMessages({
+require(csv)
+require(dplyr)
+require(tidyr)
+library(dada2)
+library(Cairo)
+#library(ggtree)
+library(VennDiagram)
+library(UpSetR)
+library("phyloseq"); packageVersion("phyloseq") # Handling and analysis of high-throughput microbiome census data.
+library("vegan");packageVersion("vegan") # Community Ecology Package.
+library("ggplot2");packageVersion("ggplot2") # Create Elegant Data Visualisations Using the Grammar of Graphics.
+library("dendextend");packageVersion("dendextend")
+library("tidyr");packageVersion("tidyr")
+library("viridis");packageVersion("viridis")
+library("reshape");packageVersion("reshape")
+#install.packages("remotes")
+#remotes::install_github("vmikk/metagMisc")
+library(metagMisc)
+library(janitor)
+library(coin) # Conditional Inference Procedures in a Permutation Test Framework.
+library(reshape2) # Flexibly Reshape Data: A Reboot of the Reshape Package. 
+library(ggnewscale) # Multiple Fill and Colour Scales in 'ggplot2'.
+library(MicrobiotaProcess) # an R package for analysis, visualization and biomarker discovery of Microbiome.
+library(patchwork)
+})
+
+
+```
+
+
+```{r}
+rm(list=ls())
+#loading the ASV taxonomic table
+getwd()
+tax<-read.table("C:/Users/User/Desktop/active_manuscripts/eric/ASV_tax_new.tsv", header = T, row.names = 1,sep = "\t")
+head(tax)
+names(tax)
+
+#head(tax)
+tax<-t(tax)
+tax<-as.matrix(tax) #converting tax dataframe to a matrix
+#head(tax)
+tax<-(t(tax)) 
+tax<-phyloseq::tax_table(tax) #converting the tax matrix to phyloseq object
+#class(tax)
+#head(tax)
+```
+
+```{r}
+# loading the ASv_counts tables
+otu<-read.table("C:/Users/User/Desktop/active_manuscripts/eric/ASV_counts.tsv", header = T, row.names=1,sep="\t")
+#otu<-otu[,-c(21)]
+head(otu)
+names(otu)
+otu<-otu_table(otu,taxa_are_rows = TRUE) #converting otu matrix to phyloseq object.
+head(otu)
+```
+```{r}
+#combine the two physeq object i.e tax,otu
+physeq <-phyloseq(otu, tax)
+physeq
+#plot_bar(physeq, fill = "Class")
+```
+
+```{r}
+#importing the metadata
+meta<- read.csv("C:/Users/User/Desktop/active_manuscripts/eric/sample_info.csv",sep = ",", header = TRUE, row.names = 1)
+head(meta)
+#names(meta) = c("Sample_ID","Animal_Type",  "Microbiome.Domain","Location")
+names(meta)
+head(meta)
+meta<-sample_data(meta) #converting the metadata to a phyloseq object
+```
+```{r}
+# we now create a third object called random for mergingwith the other three object
+library("ape")
+random_tree <- rtree(ntaxa(physeq), rooted = TRUE, tip.label = taxa_names(physeq))
+#plot(random_tree)
+```
+
+
+
+```{r}
+#merging the preceeding 3 objects.
+physeq1 <- merge_phyloseq(physeq, meta, random_tree)
+physeq1
+#saveRDS(physeq1, file="C:/Users/icipe/Desktop/active_manuscript/soil/dada2_ITS/soil_fungi.rds")
+ps1<-physeq1
+#readRDS(file ="/path/to/physeq_rumenbacteria.rds" ) #reading a .rds image
+```
+
+
+```{r}
+#filtering the unwanted sequences
+ps2 <- subset_taxa(ps1, (Order!="Chloroplast") | is.na(Order))
+ntaxa(ps2)
+ps2 <- subset_taxa(ps2, (Phylum!="Chloroflexi") | is.na(Phylum))
+ntaxa(ps2)
+ps2<- subset_taxa(ps2, (Family!="Mitochondria") | is.na(Family))
+ntaxa(ps2)
+
+```
+```{r}
+#Extracting the filtered taxonomy and feature tables for barplot plotting
+tax_table <- phyloseq_to_df(ps2, addtax = T, addtot = F, addmaxrank = F)
+cumulation <- tax_table %>% adorn_totals(c("col"))
+cumulation <- cumulation[order(cumulation$Total, decreasing = TRUE),]
+```
+
+## Subsetting Order
+```{r}
+#merging the blast taxonomic classification to blast abundance table
+merged_data <- tax_table
+#grouping the data (entire dataset): Genus, Species and sample names
+Featured_table <- merged_data[,c(5,9:23)]
+group <- Featured_table %>%
+  group_by(Order)%>%
+  summarise_if(is.numeric, sum)
+
+group<-group[-c(1),]
+head(group)
+```
+```{r}
+## TREATMENTS
+#creating multiple dataframes for the different treatments
+
+BSG<-group[,c(1,2:4)] #
+CF<-group[,c(1,5:7)]  # 
+CM<-group[,c(1,8:10)] #
+FM<-group[,c(1,11:13)]# Monoculture root
+WH<-group[,c(1,14:16)]# 
+
+```
+
+
+```{r}
+dim(BSG)
+BSG_total <- BSG %>% adorn_totals(c("col"))
+BSG_total <- mutate(BSG_total, BSG=rowSums(BSG_total[5])/4)
+BSG_total <- BSG_total[,c(1,6)]
+
+dim(CF)
+CF_total <- CF %>% adorn_totals(c("col"))
+CF_total <- mutate(CF_total, CF=rowSums(CF_total[5])/4)
+CF_total <- CF_total[,c(1,6)]
+
+dim(CM)
+CM_total <- CM %>% adorn_totals(c("col"))
+CM_total <- mutate(CM_total, CM=rowSums(CM_total[5])/4)
+CM_total <- CM_total[,c(1,6)]
+
+dim(FM)
+FM_total <- FM %>% adorn_totals(c("col"))
+FM_total <- mutate(FM_total, FM=rowSums(FM_total[5])/4)
+FM_total <- FM_total[,c(1,6)]
+
+dim(WH)
+WH_total <- WH%>% adorn_totals(c("col"))
+WH_total <- mutate(WH_total, WH=rowSums(WH_total[5])/4)
+WH_total <- WH_total[,c(1,6)]
+
+```
+
+# Cropping System & Sample Type
+```{r}
+
+merged <- Reduce(function(x,y) merge(x,y,by="Order",all=TRUE),
+                 list(BSG_total, CF_total,CM_total,FM_total,WH_total ))
+
+
+names(merged)<-c('Order','BSG','CF', 'CM','FM','WH')
+
+write.csv(merged, "C:/Users/User/Desktop/active_manuscripts/eric/PAST_Order_Abundance_Diet.csv")
+#calculating the total abundance per genus and ordering from the most abundant to the lowest
+cumulation <- merged %>% adorn_totals(c("col"))
+cumulation <- cumulation[order(cumulation$Total, decreasing = TRUE),]
+cumulation$perc = cumulation$Total / sum(cumulation$Total) * 100
+
+tired<-head(cumulation$Order, n=40)
+# Using R base append()
+#install.packages('rlist')
+library('rlist')
+li2 <- append(tired,"Others")
+print(li2)
+genus_Rep <- li2
+
+group <- aggregate(merged[-1], list(Order = replace(merged$Order,!(merged$Order %in% genus_Rep), "Others")), sum)
+#View(group) 
+
+
+#PS<-group[,c(1:2)]
+#MS<- group[,c(1:3)] 
+#PR<- group[,c(1:4)]
+#MR<- group[,c(1:5)]
+dim(group)
+All<- group[,c(1:6)]
+
+```
+
+
+# Viewing Sample Diversity
+```{r}
+#install.packages("janitor")
+library(janitor)
+#converting the abudances into percentage
+bar_all <- adorn_percentages(All, denominator = "col", na.rm = T)
+bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all<-bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all
+write.csv(dist_all, "C:/Users/User/Desktop/active_manuscripts/eric/B.Top_40_Bacteria_Order_Abundance_Diet.csv")
+
+
+#gathering the data
+bar_all <- bar_all %>%
+  gather(value = "abundance", key = "Sample_type", -Order)
+bar_all <- as.data.frame(gsub("\\(", " (", as.matrix(bar_all)))
+
+# coerce the dataframe columns into respective data type
+bar_all$Order <- as.factor(bar_all$Order)
+bar_all$Sample_type <- as.character(bar_all$Sample_type)
+bar_all$abundance <- as.numeric(bar_all$abundance)
+
+#ordering the data for plotting
+bar_all$Order <- reorder(bar_all$Order, bar_all$abundance)
+bar_all$Order <- factor(bar_all$Order, levels=rev(levels(bar_all$Order)))
+bar_all$Order <- factor(bar_all$Order, 
+                        levels=genus_Rep)
+
+# Defining the color pallete
+myPalette <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#99000D", "#E6AB02", "#A6761D", "#666666","#FDCDAC", "#1F78B4", "#B2DF8A", "#33A02C", "#CBD5E8", "#E31A1C", "#FDBF6F", "#FF7F00","#4A1486","#C0C0C0","#B3E2CD","#FFFF33", "#5172b2","#F4CAE4", "#E6F5C9", "#FCFBFD","#139BF1","#09FF00","#065535", "#1D91C0", "#C0FFEE","#B35806","#0C2C84","#D0ED0E","#092617","#499976","#4D5D53","#E48400","#6082B6","#316689","#CEFB02","#738678","#645452","#EEA47FFF", "#00539CFF", "#FC766AFF", "#42EADDFF", "#00A4CCFF", "#69B3BB", "#B589D6","#D1DFB7","#97BC62FF","#D198C5FF","#000000", "#CBCE91FF", "#616247FF", "#D64161FF","#435E55FF", "#DD4132FF","#CE4A7EFF", "#BD7F37FF","#FFA351FF","#185E57", "#FCE3E3", "#EF6C6C", "#EF6C9A", "#93103E", "#F7E3FC", "#D56CEF", "#BD19E6", "#8D6CEF", "#DBD1FA", "#BFC8F8", "#1531BC", "#9FA5F3", "#95C7F3", "#6CEFC8", "#6CEF84", "#91E619", "#B7CEEC", "#9AFEFF", "#57FEFF", "#78C7C7", "#46C7C7", "#00A36C", "#728C00", "#4E9268", "#6CC417", "#64E986", "#F5E216", "#FFCE44", "#8B8000", "#660000", "#610541", "#E56E94", "#F660AB", "#E3319D", "#FF77FF", "#C45AEC", "#6960EC", "#736AFF", "#F9B7FF", "#FCDFFF", "#D291BC", "#614051", "#FEA3AA", "#7D0541")
+
+length(myPalette)
+
+# Definig the names in italics
+guide_italics <- guides(fill = guide_legend(label.theme = element_text(size = 15, 
+face = "italic", colour = "Black", angle = 0)))
+
+```
+
+# Plotting barplot
+```{r}
+library(Cairo)
+library(forcats)
+
+#plotting the barplot 
+p_all <- ggplot(bar_all,aes(x = fct_inorder(Sample_type), y = abundance), labs(fill= Order), group=row.names(bar_all))+ xlab("Diet")+ ylab("abundance") + geom_col(aes(fill = Order),position = position_stack(reverse = FALSE))+
+  theme(axis.text.x = element_text(angle = 72,size = 15, hjust = 1, face = "italic", family = "Arial"))+
+   scale_fill_manual(values = myPalette)+
+  #guides(fill = guide_legend(reverse = FALSE))+
+  guide_italics+
+  theme(legend.text = element_text(size = 8, colour = "black", face = "italic", family = "Arial"), legend.text.align = 0)+
+  theme(axis.text.y = element_text(angle = 0, vjust = 0.5, size = 8, family = "Arial"))+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))+
+  theme(axis.line = element_line())+
+  theme(panel.background = element_rect(fill = "white"),plot.margin = margin(0.1, 0.1, 0.1, 0.1, "cm"), plot.background = element_rect(colour = NULL, size = 1))+
+  theme(axis.ticks.length.y = unit(.15, "cm"), axis.ticks.length.x = unit(.25, "cm"), axis.text.x = element_text(margin = margin(t = .3, unit = "cm")))+
+  theme(legend.position = "right", legend.justification = "top", legend.direction = "vertical", legend.text = element_text(size = 10))+
+  theme(legend.key = element_rect(fill = "white"))+
+  theme(legend.title = element_text(face = NULL, size = 8, family = "Arial"))+
+  theme(panel.background = element_blank(), axis.text = element_blank())+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))
+
+#install.packages('extrafont')
+library(extrafont)
+#font_import
+#BiocManager::install("ggpubr")
+
+#plot4_60<-p_all + scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + xlab("Site")
+pdt_40<-p_all + theme(text = element_text(size = 14)) 
+pdt_40
+
+```
+
+## Individual
+```{r}
+## Subsetting Order
+
+#merging the blast taxonomic classification to blast abundance table
+merged_data <- tax_table
+#grouping the data (entire dataset): Genus, Species and sample names
+Featured_table <- merged_data[,c(5,9:23)]
+group <- Featured_table %>%
+  group_by(Order)%>%
+  summarise_if(is.numeric, sum)
+
+group<-group[-c(1),]
+head(group)
+
+
+## TREATMENTS
+#creating multiple dataframes for the different treatments
+
+BSG1<-group[,c(1,2)] #
+BSG2<-group[,c(1,3)] #
+BSG3<-group[,c(1,4)] #
+
+CF1<-group[,c(1,5)]  # 
+CF2<-group[,c(1,6)]  # 
+CF3<-group[,c(1,7)]  # 
+
+CM1<-group[,c(1,8)] #
+CM2<-group[,c(1,9)] #
+CM3<-group[,c(1,10)] #
+
+FM1<-group[,c(1,11)]# 
+FM2<-group[,c(1,12)]# 
+FM3<-group[,c(1,13)]# 
+
+WH1<-group[,c(1,14)]# 
+WH2<-group[,c(1,15)]# 
+WH3<-group[,c(1,16)]# 
+
+```
+
+
+```{r}
+dim(BSG1)
+BSG1_total <- BSG1 %>% adorn_totals(c("col"))
+BSG1_total <- mutate(BSG1_total, BSG1=rowSums(BSG1_total[3])/2)
+BSG1_total <- BSG1_total[,c(1,3)]
+
+dim(BSG2)
+BSG2_total <- BSG2 %>% adorn_totals(c("col"))
+BSG2_total <- mutate(BSG2_total, BSG2=rowSums(BSG2_total[3])/2)
+BSG2_total <- BSG2_total[,c(1,3)]
+
+dim(BSG3)
+BSG3_total <- BSG3 %>% adorn_totals(c("col"))
+BSG3_total <- mutate(BSG3_total, BSG3=rowSums(BSG3_total[3])/2)
+BSG3_total <- BSG3_total[,c(1,3)]
+
+dim(CF1)
+CF1_total <- CF1 %>% adorn_totals(c("col"))
+CF1_total <- mutate(CF1_total, CF1=rowSums(CF1_total[3])/2)
+CF1_total <- CF1_total[,c(1,3)]
+
+dim(CF2)
+CF2_total <- CF2 %>% adorn_totals(c("col"))
+CF2_total <- mutate(CF2_total, CF2=rowSums(CF2_total[3])/2)
+CF2_total <- CF2_total[,c(1,3)]
+
+dim(CF3)
+CF3_total <- CF3 %>% adorn_totals(c("col"))
+CF3_total <- mutate(CF3_total, CF3=rowSums(CF3_total[3])/2)
+CF3_total <- CF3_total[,c(1,3)]
+
+dim(CM1)
+CM1_total <- CM1 %>% adorn_totals(c("col"))
+CM1_total <- mutate(CM1_total, CM1=rowSums(CM1_total[3])/2)
+CM1_total <- CM1_total[,c(1,3)]
+
+dim(CM2)
+CM2_total <- CM2 %>% adorn_totals(c("col"))
+CM2_total <- mutate(CM2_total, CM2=rowSums(CM2_total[3])/2)
+CM2_total <- CM2_total[,c(1,3)]
+
+dim(CM3)
+CM3_total <- CM3 %>% adorn_totals(c("col"))
+CM3_total <- mutate(CM3_total, CM3=rowSums(CM3_total[3])/2)
+CM3_total <- CM3_total[,c(1,3)]
+
+dim(FM1)
+FM1_total <- FM1 %>% adorn_totals(c("col"))
+FM1_total <- mutate(FM1_total, FM1=rowSums(FM1_total[3])/2)
+FM1_total <- FM1_total[,c(1,3)]
+
+dim(FM2)
+FM2_total <- FM2 %>% adorn_totals(c("col"))
+FM2_total <- mutate(FM2_total, FM2=rowSums(FM2_total[3])/2)
+FM2_total <- FM2_total[,c(1,3)]
+
+dim(FM3)
+FM3_total <- FM3 %>% adorn_totals(c("col"))
+FM3_total <- mutate(FM3_total, FM3=rowSums(FM3_total[3])/2)
+FM3_total <- FM3_total[,c(1,3)]
+
+dim(WH1)
+WH1_total <- WH1%>% adorn_totals(c("col"))
+WH1_total <- mutate(WH1_total, WH1=rowSums(WH1_total[3])/2)
+WH1_total <- WH1_total[,c(1,3)]
+
+dim(WH2)
+WH2_total <- WH2%>% adorn_totals(c("col"))
+WH2_total <- mutate(WH2_total, WH2=rowSums(WH2_total[3])/2)
+WH2_total <- WH2_total[,c(1,3)]
+
+
+
+dim(WH3)
+WH3_total <- WH3%>% adorn_totals(c("col"))
+WH3_total <- mutate(WH3_total, WH3=rowSums(WH3_total[3])/2)
+WH3_total <- WH3_total[,c(1,3)]
+
+```
+
+# Cropping System & Sample Type
+```{r}
+
+merged <- Reduce(function(x,y) merge(x,y,by="Order",all=TRUE),
+                 list(BSG1_total,BSG2_total,BSG3_total, 
+                      CF1_total,CF2_total,CF3_total,
+                      CM1_total,CM2_total,CM3_total,
+                      FM1_total,FM2_total,FM3_total,
+                      WH1_total,WH2_total,WH3_total))
+
+
+names(merged)<-c('Order','BSG1','BSG2','BSG3',
+                 'CF1','CF2','CF3',
+                 'CM1','CM2','CM3',
+                 'FM1','FM2','FM3',
+                 'WH1','WH2','WH3')
+
+write.csv(merged, "C:/Users/User/Desktop/active_manuscripts/eric/PAST2_Order_Abundance_Diet.csv")
+#calculating the total abundance per genus and ordering from the most abundant to the lowest
+cumulation <- merged %>% adorn_totals(c("col"))
+cumulation <- cumulation[order(cumulation$Total, decreasing = TRUE),]
+cumulation$perc = cumulation$Total / sum(cumulation$Total) * 100
+
+tired<-head(cumulation$Order, n=40)
+# Using R base append()
+#install.packages('rlist')
+library('rlist')
+li2 <- append(tired,"Others")
+print(li2)
+genus_Rep <- li2
+
+group <- aggregate(merged[-1], list(Order = replace(merged$Order,!(merged$Order %in% genus_Rep), "Others")), sum)
+#View(group) 
+
+
+#PS<-group[,c(1:2)]
+#MS<- group[,c(1:3)] 
+#PR<- group[,c(1:4)]
+#MR<- group[,c(1:5)]
+dim(group)
+All<- group[,c(1:16)]
+
+```
+
+
+# Viewing Sample Diversity
+```{r}
+#install.packages("janitor")
+library(janitor)
+#converting the abudances into percentage
+bar_all <- adorn_percentages(All, denominator = "col", na.rm = T)
+bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all<-bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all
+write.csv(dist_all, "C:/Users/User/Desktop/active_manuscripts/eric/A.Top_40_Bacteria_Order_Abundance_Diet.csv")
+
+
+#gathering the data
+bar_all <- bar_all %>%
+  gather(value = "abundance", key = "Sample_type", -Order)
+bar_all <- as.data.frame(gsub("\\(", " (", as.matrix(bar_all)))
+
+# coerce the dataframe columns into respective data type
+bar_all$Order <- as.factor(bar_all$Order)
+bar_all$Sample_type <- as.character(bar_all$Sample_type)
+bar_all$abundance <- as.numeric(bar_all$abundance)
+
+#ordering the data for plotting
+bar_all$Order <- reorder(bar_all$Order, bar_all$abundance)
+bar_all$Order <- factor(bar_all$Order, levels=rev(levels(bar_all$Order)))
+bar_all$Order <- factor(bar_all$Order, 
+                        levels=genus_Rep)
+
+# Defining the color pallete
+myPalette <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#99000D", "#E6AB02", "#A6761D", "#666666","#FDCDAC", "#1F78B4", "#B2DF8A", "#33A02C", "#CBD5E8", "#E31A1C", "#FDBF6F", "#FF7F00","#4A1486","#C0C0C0","#B3E2CD","#FFFF33", "#5172b2","#F4CAE4", "#E6F5C9", "#FCFBFD","#139BF1","#09FF00","#065535", "#1D91C0", "#C0FFEE","#B35806","#0C2C84","#D0ED0E","#092617","#499976","#4D5D53","#E48400","#6082B6","#316689","#CEFB02","#738678","#645452","#EEA47FFF", "#00539CFF", "#FC766AFF", "#42EADDFF", "#00A4CCFF", "#69B3BB", "#B589D6","#D1DFB7","#97BC62FF","#D198C5FF","#000000", "#CBCE91FF", "#616247FF", "#D64161FF","#435E55FF", "#DD4132FF","#CE4A7EFF", "#BD7F37FF","#FFA351FF","#185E57", "#FCE3E3", "#EF6C6C", "#EF6C9A", "#93103E", "#F7E3FC", "#D56CEF", "#BD19E6", "#8D6CEF", "#DBD1FA", "#BFC8F8", "#1531BC", "#9FA5F3", "#95C7F3", "#6CEFC8", "#6CEF84", "#91E619", "#B7CEEC", "#9AFEFF", "#57FEFF", "#78C7C7", "#46C7C7", "#00A36C", "#728C00", "#4E9268", "#6CC417", "#64E986", "#F5E216", "#FFCE44", "#8B8000", "#660000", "#610541", "#E56E94", "#F660AB", "#E3319D", "#FF77FF", "#C45AEC", "#6960EC", "#736AFF", "#F9B7FF", "#FCDFFF", "#D291BC", "#614051", "#FEA3AA", "#7D0541")
+
+length(myPalette)
+
+# Definig the names in italics
+guide_italics <- guides(fill = guide_legend(label.theme = element_text(size = 15, 
+face = "italic", colour = "Black", angle = 0)))
+
+```
+
+# Plotting barplot
+```{r}
+library(Cairo)
+library(forcats)
+
+#plotting the barplot 
+p_all <- ggplot(bar_all,aes(x = fct_inorder(Sample_type), y = abundance), labs(fill= Order), group=row.names(bar_all))+ xlab("Diet")+ ylab("abundance") + geom_col(aes(fill = Order),position = position_stack(reverse = FALSE))+
+  theme(axis.text.x = element_text(angle = 72,size = 15, hjust = 1, face = "italic", family = "Arial"))+
+   scale_fill_manual(values = myPalette)+
+  #guides(fill = guide_legend(reverse = FALSE))+
+  guide_italics+
+  theme(legend.text = element_text(size = 8, colour = "black", face = "italic", family = "Arial"), legend.text.align = 0)+
+  theme(axis.text.y = element_text(angle = 0, vjust = 0.5, size = 8, family = "Arial"))+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))+
+  theme(axis.line = element_line())+
+  theme(panel.background = element_rect(fill = "white"),plot.margin = margin(0.1, 0.1, 0.1, 0.1, "cm"), plot.background = element_rect(colour = NULL, size = 1))+
+  theme(axis.ticks.length.y = unit(.15, "cm"), axis.ticks.length.x = unit(.25, "cm"), axis.text.x = element_text(margin = margin(t = .3, unit = "cm")))+
+  theme(legend.position = "right", legend.justification = "top", legend.direction = "vertical", legend.text = element_text(size = 10))+
+  theme(legend.key = element_rect(fill = "white"))+
+  theme(legend.title = element_text(face = NULL, size = 8, family = "Arial"))+
+  theme(panel.background = element_blank(), axis.text = element_blank())+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))
+
+#install.packages('extrafont')
+library(extrafont)
+#font_import
+#BiocManager::install("ggpubr")
+
+#plot4_60<-p_all + scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + xlab("Site")
+pdtA_40<-p_all + theme(text = element_text(size = 14)) 
+pdtA_40
+
+```
+
+## Subsetting Order individual samples.
+```{r}
+#merging the blast taxonomic classification to blast abundance table
+merged_data <- tax_table
+#grouping the data (entire dataset): Genus, Species and sample names
+Featured_table <- merged_data[,c(5,7:23)]
+
+#df <- Featured_table %>% dplyr:: select(starts_with("Bacteroidales"))
+write.csv(Featured_table, "C:/Users/User/Desktop/active_manuscripts/eric/Abundance_Diet_All.Orders.csv")
+Fea_table<- read.csv("C:/Users/User/Desktop/active_manuscripts/eric/Abundance_Diet_All.genus_clean.csv",sep = ",", header = TRUE)
+group<-Fea_table #[,-c(1:2)]
+
+head(group)
+```
+
+# Cropping System & Sample Type
+```{r}
+
+merged <- group
+names(merged)<-c('Genus','BSG1','BSG2','BSG3',
+                 'CF1','CF2','CF3',
+                 'CM1', 'CM2', 'CM3',
+                 'FM1','FM2','FM3',
+                 'WH1','WH2','WH3')
+
+#merged<-group
+
+write.csv(merged, "C:/Users/User/Desktop/active_manuscripts/eric/PAST_Genus_top5_Abundance_Diet.csv")
+#calculating the total abundance per genus and ordering from the most abundant to the lowest
+cumulation <- merged %>% adorn_totals(c("col"))
+cumulation <- cumulation[order(cumulation$Total, decreasing = TRUE),]
+cumulation$perc = cumulation$Total / sum(cumulation$Total) * 100
+
+tired<-head(cumulation$Genus, n=5)
+# Using R base append()
+#install.packages('rlist')
+library('rlist')
+li2 <- append(tired,"Others")
+print(li2)
+genus_Rep <- li2
+
+group <- aggregate(merged[-1], list(Genus = replace(merged$Genus,!(merged$Genus %in% genus_Rep), "Others")), sum)
+#View(group) 
+
+
+#PS<-group[,c(1:2)]
+#MS<- group[,c(1:3)] 
+#PR<- group[,c(1:4)]
+#MR<- group[,c(1:5)]
+dim(group)
+All<- group[,c(1:16)]
+
+```
+
+
+# Viewing Sample Diversity
+```{r}
+#install.packages("janitor")
+library(janitor)
+#converting the abudances into percentage
+bar_all <- adorn_percentages(All, denominator = "col", na.rm = T)
+bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all<-bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all
+write.csv(dist_all, "C:/Users/User/Desktop/active_manuscripts/eric/B.Top_5_Bacteria_Genus_Abundance_Diet.csv")
+
+
+#gathering the data
+bar_all <- bar_all %>%
+  gather(value = "abundance", key = "Sample_type", -Genus)
+bar_all <- as.data.frame(gsub("\\(", " (", as.matrix(bar_all)))
+
+# coerce the dataframe columns into respective data type
+bar_all$Genus <- as.factor(bar_all$Genus)
+bar_all$Sample_type <- as.character(bar_all$Sample_type)
+bar_all$abundance <- as.numeric(bar_all$abundance)
+
+#ordering the data for plotting
+bar_all$Genus <- reorder(bar_all$Genus, bar_all$abundance)
+bar_all$Genus <- factor(bar_all$Genus, levels=rev(levels(bar_all$Genus)))
+bar_all$Genus <- factor(bar_all$Genus, 
+                        levels=genus_Rep,
+                        #levels = Genus[1:5]
+                        )
+
+# Defining the color pallete
+myPalette <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#99000D", "#E6AB02", "#A6761D", "#666666","#FDCDAC", "#1F78B4", "#B2DF8A", "#33A02C", "#CBD5E8", "#E31A1C", "#FDBF6F", "#FF7F00","#4A1486","#C0C0C0","#B3E2CD","#FFFF33", "#5172b2","#F4CAE4", "#E6F5C9", "#FCFBFD","#139BF1","#09FF00","#065535", "#1D91C0", "#C0FFEE","#B35806","#0C2C84","#D0ED0E","#092617","#499976","#4D5D53","#E48400","#6082B6","#316689","#CEFB02","#738678","#645452","#EEA47FFF", "#00539CFF", "#FC766AFF", "#42EADDFF", "#00A4CCFF", "#69B3BB", "#B589D6","#D1DFB7","#97BC62FF","#D198C5FF","#000000", "#CBCE91FF", "#616247FF", "#D64161FF","#435E55FF", "#DD4132FF","#CE4A7EFF", "#BD7F37FF","#FFA351FF","#185E57", "#FCE3E3", "#EF6C6C", "#EF6C9A", "#93103E", "#F7E3FC", "#D56CEF", "#BD19E6", "#8D6CEF", "#DBD1FA", "#BFC8F8", "#1531BC", "#9FA5F3", "#95C7F3", "#6CEFC8", "#6CEF84", "#91E619", "#B7CEEC", "#9AFEFF", "#57FEFF", "#78C7C7", "#46C7C7", "#00A36C", "#728C00", "#4E9268", "#6CC417", "#64E986", "#F5E216", "#FFCE44", "#8B8000", "#660000", "#610541", "#E56E94", "#F660AB", "#E3319D", "#FF77FF", "#C45AEC", "#6960EC", "#736AFF", "#F9B7FF", "#FCDFFF", "#D291BC", "#614051", "#FEA3AA", "#7D0541")
+
+length(myPalette)
+
+# Definig the names in italics
+guide_italics <- guides(fill = guide_legend(label.theme = element_text(size = 15, 
+face = "italic", colour = "Black", angle = 0)))
+
+```
+
+# Plotting barplot
+```{r}
+library(Cairo)
+library(forcats)
+
+#plotting the barplot 
+p_all <- ggplot(bar_all,aes(x = fct_inorder(Sample_type), y = abundance), labs(fill= Genus), group=row.names(bar_all))+ xlab("Diet")+ ylab("abundance") + geom_col(aes(fill = Genus),position = position_stack(reverse = FALSE))+
+  theme(axis.text.x = element_text(angle = 72,size = 15, hjust = 1, face = "italic", family = "Arial"))+
+   scale_fill_manual(values = myPalette)+
+  #guides(fill = guide_legend(reverse = FALSE))+
+  guide_italics+
+  theme(legend.text = element_text(size = 8, colour = "black", face = "italic", family = "Arial"), legend.text.align = 0)+
+  theme(axis.text.y = element_text(angle = 0, vjust = 0.5, size = 8, family = "Arial"))+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))+
+  theme(axis.line = element_line())+
+  theme(panel.background = element_rect(fill = "white"),plot.margin = margin(0.1, 0.1, 0.1, 0.1, "cm"), plot.background = element_rect(colour = NULL, size = 1))+
+  theme(axis.ticks.length.y = unit(.15, "cm"), axis.ticks.length.x = unit(.25, "cm"), axis.text.x = element_text(margin = margin(t = .3, unit = "cm")))+
+  theme(legend.position = "right", legend.justification = "top", legend.direction = "vertical", legend.text = element_text(size = 10))+
+  theme(legend.key = element_rect(fill = "white"))+
+  theme(legend.title = element_text(face = NULL, size = 8, family = "Arial"))+
+  theme(panel.background = element_blank(), axis.text = element_blank())+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))
+
+#install.packages('extrafont')
+library(extrafont)
+#font_import
+#BiocManager::install("ggpubr")
+
+#plot4_60<-p_all + scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + xlab("Site")
+pdt_gen_5<-p_all + theme(text = element_text(size = 14)) 
+pdt_gen_5
+
+```
+## Subsetting Order individual samples.
+```{r}
+#merging the blast taxonomic classification to blast abundance table
+merged_data <- tax_table
+#grouping the data (entire dataset): Genus, Species and sample names
+Featured_table <- merged_data[,c(5,7:23)]
+
+#df <- Featured_table %>% dplyr:: select(starts_with("Bacteroidales"))
+write.csv(Featured_table, "C:/Users/User/Desktop/active_manuscripts/eric/Abundance_Diet_All.Orders.csv")
+Fea_table<- read.csv("C:/Users/User/Desktop/active_manuscripts/eric/Abundance_Diet_All.genus_clean.csv",sep = ",", header = TRUE)
+group<-Fea_table #[,-c(1:2)]
+
+head(group)
+```
+```{r}
+## TREATMENTS
+#creating multiple dataframes for the different treatments
+
+BSG<-group[,c(1,2:4)] #
+CF<-group[,c(1,5:7)]
+CM<-group[,c(1,8:10)]
+FM<-group[,c(1,11:13)]# Monoculture root
+WH<-group[,c(1,14:16)]#
+
+```
+
+
+```{r}
+dim(BSG)
+BSG_total <- BSG %>% adorn_totals(c("col"))
+BSG_total <- mutate(BSG_total, BSG=rowSums(BSG_total[5])/4)
+BSG_total <- BSG_total[,c(1,6)]
+
+
+dim(CF)
+CF_total <- CF %>% adorn_totals(c("col"))
+CF_total <- mutate(CF_total, CF=rowSums(CF_total[5])/4)
+CF_total <- CF_total[,c(1,6)]
+
+
+dim(CM)
+CM_total <- CM %>% adorn_totals(c("col"))
+CM_total <- mutate(CM_total, CM=rowSums(CM_total[5])/4)
+CM_total <- CM_total[,c(1,6)]
+
+dim(FM)
+FM_total <- FM %>% adorn_totals(c("col"))
+FM_total <- mutate(FM_total, FM=rowSums(FM_total[5])/4)
+FM_total <- FM_total[,c(1,6)]
+
+dim(WH)
+WH_total <- WH%>% adorn_totals(c("col"))
+WH_total <- mutate(WH_total, WH=rowSums(WH_total[5])/4)
+WH_total <- WH_total[,c(1,6)]
+
+```
+
+# Cropping System & Sample Type
+```{r}
+
+merged <- Reduce(function(x,y) merge(x,y,by="Genus",all=TRUE),
+                 list(BSG_total,CF_total, CM_total,FM_total,WH_total))
+
+
+names(merged)<-c('Genus','BSG','CF', 'CM','FM','WH')
+
+#merged<-group
+
+write.csv(merged, "C:/Users/User/Desktop/active_manuscripts/eric/PAST_Genus_top5_Abundance_Diet_combined.csv")
+#calculating the total abundance per genus and ordering from the most abundant to the lowest
+cumulation <- merged %>% adorn_totals(c("col"))
+cumulation <- cumulation[order(cumulation$Total, decreasing = TRUE),]
+cumulation$perc = cumulation$Total / sum(cumulation$Total) * 100
+
+tired<-head(cumulation$Genus, n=5)
+# Using R base append()
+#install.packages('rlist')
+library('rlist')
+li2 <- append(tired,"Others")
+print(li2)
+genus_Rep <- li2
+
+group <- aggregate(merged[-1], list(Genus = replace(merged$Genus,!(merged$Genus %in% genus_Rep), "Others")), sum)
+#View(group) 
+
+
+#PS<-group[,c(1:2)]
+#MS<- group[,c(1:3)] 
+#PR<- group[,c(1:4)]
+#MR<- group[,c(1:5)]
+dim(group)
+All<- group[,c(1:6)]
+
+```
+
+
+# Viewing Sample Diversity
+```{r}
+#install.packages("janitor")
+library(janitor)
+#converting the abudances into percentage
+bar_all <- adorn_percentages(All, denominator = "col", na.rm = T)
+bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all<-bar_all %>%
+  adorn_totals("row") %>%
+  adorn_pct_formatting()
+dist_all
+write.csv(dist_all, "C:/Users/User/Desktop/active_manuscripts/eric/B.Top_5_Bacteria_Genus_Abundance_Diet_combined.csv")
+
+
+#gathering the data
+bar_all <- bar_all %>%
+  gather(value = "abundance", key = "Sample_type", -Genus)
+bar_all <- as.data.frame(gsub("\\(", " (", as.matrix(bar_all)))
+
+# coerce the dataframe columns into respective data type
+bar_all$Genus <- as.factor(bar_all$Genus)
+bar_all$Sample_type <- as.character(bar_all$Sample_type)
+bar_all$abundance <- as.numeric(bar_all$abundance)
+
+#ordering the data for plotting
+bar_all$Genus <- reorder(bar_all$Genus, bar_all$abundance)
+bar_all$Genus <- factor(bar_all$Genus, levels=rev(levels(bar_all$Genus)))
+bar_all$Genus <- factor(bar_all$Genus, 
+                        levels=genus_Rep,
+                        #levels = Genus[1:5]
+                        )
+
+# Defining the color pallete
+myPalette <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#99000D", "#E6AB02", "#A6761D", "#666666","#FDCDAC", "#1F78B4", "#B2DF8A", "#33A02C", "#CBD5E8", "#E31A1C", "#FDBF6F", "#FF7F00","#4A1486","#C0C0C0","#B3E2CD","#FFFF33", "#5172b2","#F4CAE4", "#E6F5C9", "#FCFBFD","#139BF1","#09FF00","#065535", "#1D91C0", "#C0FFEE","#B35806","#0C2C84","#D0ED0E","#092617","#499976","#4D5D53","#E48400","#6082B6","#316689","#CEFB02","#738678","#645452","#EEA47FFF", "#00539CFF", "#FC766AFF", "#42EADDFF", "#00A4CCFF", "#69B3BB", "#B589D6","#D1DFB7","#97BC62FF","#D198C5FF","#000000", "#CBCE91FF", "#616247FF", "#D64161FF","#435E55FF", "#DD4132FF","#CE4A7EFF", "#BD7F37FF","#FFA351FF","#185E57", "#FCE3E3", "#EF6C6C", "#EF6C9A", "#93103E", "#F7E3FC", "#D56CEF", "#BD19E6", "#8D6CEF", "#DBD1FA", "#BFC8F8", "#1531BC", "#9FA5F3", "#95C7F3", "#6CEFC8", "#6CEF84", "#91E619", "#B7CEEC", "#9AFEFF", "#57FEFF", "#78C7C7", "#46C7C7", "#00A36C", "#728C00", "#4E9268", "#6CC417", "#64E986", "#F5E216", "#FFCE44", "#8B8000", "#660000", "#610541", "#E56E94", "#F660AB", "#E3319D", "#FF77FF", "#C45AEC", "#6960EC", "#736AFF", "#F9B7FF", "#FCDFFF", "#D291BC", "#614051", "#FEA3AA", "#7D0541")
+
+length(myPalette)
+
+# Definig the names in italics
+guide_italics <- guides(fill = guide_legend(label.theme = element_text(size = 15, 
+face = "italic", colour = "Black", angle = 0)))
+
+```
+
+# Plotting barplot
+```{r}
+library(Cairo)
+library(forcats)
+
+#plotting the barplot 
+p_all <- ggplot(bar_all,aes(x = fct_inorder(Sample_type), y = abundance), labs(fill= Genus), group=row.names(bar_all))+ xlab("Diet")+ ylab("abundance") + geom_col(aes(fill = Genus),position = position_stack(reverse = FALSE))+
+  theme(axis.text.x = element_text(angle = 72,size = 15, hjust = 1, face = "italic", family = "Arial"))+
+   scale_fill_manual(values = myPalette)+
+  #guides(fill = guide_legend(reverse = FALSE))+
+  guide_italics+
+  theme(legend.text = element_text(size = 8, colour = "black", face = "italic", family = "Arial"), legend.text.align = 0)+
+  theme(axis.text.y = element_text(angle = 0, vjust = 0.5, size = 8, family = "Arial"))+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))+
+  theme(axis.line = element_line())+
+  theme(panel.background = element_rect(fill = "white"),plot.margin = margin(0.1, 0.1, 0.1, 0.1, "cm"), plot.background = element_rect(colour = NULL, size = 1))+
+  theme(axis.ticks.length.y = unit(.15, "cm"), axis.ticks.length.x = unit(.25, "cm"), axis.text.x = element_text(margin = margin(t = .3, unit = "cm")))+
+  theme(legend.position = "right", legend.justification = "top", legend.direction = "vertical", legend.text = element_text(size = 10))+
+  theme(legend.key = element_rect(fill = "white"))+
+  theme(legend.title = element_text(face = NULL, size = 8, family = "Arial"))+
+  theme(panel.background = element_blank(), axis.text = element_blank())+
+  theme(axis.text = element_text(colour = "black", size = 8, family = "Arial"))
+
+#install.packages('extrafont')
+library(extrafont)
+#font_import
+#BiocManager::install("ggpubr")
+
+#plot4_60<-p_all + scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + xlab("Site")
+pdt_gen5_combined<-p_all + theme(text = element_text(size = 14)) 
+pdt_gen5_combined
+
+```
+
+
+
+
+```{r}
+library(ggpubr)
+ggarrange(
+  pdtA_40,                # First row with line plot
+  # Second row with box and dot plots
+  ggarrange(pdt_gen5_combined, ncol = 2, labels = c("B")), 
+  nrow = 2, 
+  labels = "A"       # Label of the line plot
+  ) 
+```
+```{r}
+
+ggsave("C:/Users/User/Desktop/active_manuscripts/eric/Top_30_Fungi_Genus_Abundance.jpeg", 
+       width = 18, height = 18, dpi = 600)
+
+ggsave("C:/Users/User/Desktop/active_manuscripts/eric/Top_30_Fungi_Genus_Abundance.png", 
+       width = 18, height = 18, dpi = 600)
+
+ggsave("C:/Users/User/Desktop/active_manuscripts/eric/Top_30_Fungi_Genus_Abundance.svg", 
+       width = 18, height = 18, dpi = 600)
+
+ggsave("C:/Users/User/Desktop/active_manuscripts/eric/Top_30_Fungi_Genus_Abundance.tiff", 
+       width = 18, height = 18, dpi = 600)
+
+
+```
